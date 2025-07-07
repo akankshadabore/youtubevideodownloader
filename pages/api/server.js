@@ -11,6 +11,8 @@ const app = express();
 const execPromise = promisify(exec);
 const PORT = process.env.PORT || 4000;
 
+const ytDlpPath = '/opt/homebrew/bin/yt-dlp'; // Replace with output of `which yt-dlp`
+
 app.use(cors());
 app.use(express.json());
 
@@ -22,14 +24,14 @@ app.post('/download', async (req, res) => {
   }
 
   try {
-    const { stdout: titleRaw } = await execPromise(`yt-dlp --get-title "${url}"`);
+    const { stdout: titleRaw } = await execPromise(`${ytDlpPath} --get-title "${url}"`);
     const title = titleRaw.trim().replace(/[<>:"/\\|?*]+/g, '');
     let filename = audioOnly ? `${title}.mp3` : `${title}.mp4`;
     const finalPath = join(tmpdir(), filename);
 
     if (audioOnly) {
       const audioPath = finalPath.replace('.mp3', '.%(ext)s');
-      const cmd = `yt-dlp -f bestaudio --extract-audio --audio-format mp3 -o "${audioPath}" "${url}"`;
+      const cmd = `${ytDlpPath} -f bestaudio --extract-audio --audio-format mp3 -o "${audioPath}" "${url}"`;
       await execPromise(cmd);
     } else {
       let formatSelector;
@@ -44,7 +46,7 @@ app.post('/download', async (req, res) => {
       }
 
       const rawOutPath = join(tmpdir(), `${title}.%(ext)s`);
-      const ytCmd = `yt-dlp -f "${formatSelector}" -o "${rawOutPath}" "${url}"`;
+      const ytCmd = `${ytDlpPath} -f "${formatSelector}" -o "${rawOutPath}" "${url}"`;
       await execPromise(ytCmd);
 
       const allFiles = fs.readdirSync(tmpdir());
