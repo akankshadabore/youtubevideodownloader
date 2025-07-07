@@ -189,7 +189,7 @@ function Home() {
   };
 
   return (
-    <main className="min-h-screen bg-gray-900 text-white flex items-center justify-center px-4">
+    <main className="min-h-screen bg-black text-white flex items-center justify-center px-4">
       <ToastContainer 
         position="top-right"
         autoClose={4000}
