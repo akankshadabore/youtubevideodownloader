@@ -234,7 +234,7 @@ function Home() {
               }`}></div>
             </div>
             <span className="ml-3 text-sm font-medium">
-              🎵 Audio Only ({audioOnly ? 'ON' : 'OFF'})  `q`
+              🎵 Audio Only ({audioOnly ? 'ON' : 'OFF'})  
             </span>
           </label>
         </div>
