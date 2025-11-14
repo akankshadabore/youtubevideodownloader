@@ -6,7 +6,7 @@ import fs from 'fs';
 
 const execPromise = promisify(exec);
 
- async function handler(req, res) {
+async function handler(req, res) {
   if (req.method !== 'POST') {
     return res.status(405).json({ error: 'Method not allowed' });
   }
@@ -18,66 +18,67 @@ const execPromise = promisify(exec);
   }
 
   try {
-    // 🧾 Clean video title for filename
     const { stdout: titleRaw } = await execPromise(`yt-dlp --get-title "${url}"`);
     const title = titleRaw.trim().replace(/[<>:"/\\|?*]+/g, '');
-    
     let filename = audioOnly ? `${title}.mp3` : `${title}.mp4`;
     const finalPath = join(tmpdir(), filename);
 
     if (audioOnly) {
       const audioPath = finalPath.replace('.mp3', '.%(ext)s');
       const cmd = `yt-dlp -f bestaudio --extract-audio --audio-format mp3 -o "${audioPath}" "${url}"`;
-      await execPromise(cmd);
+      const { stdout, stderr } = await execPromise(cmd);
+      console.log('yt-dlp audio stdout:', stdout);
+      console.log('yt-dlp audio stderr:', stderr);
     } else {
-      // 🧬 Define format selector
       let formatSelector;
       switch (quality) {
-        case '144p':
-          formatSelector = 'bestvideo[height<=144]+bestaudio/best[height<=144]';
-          break;
-        case '240p':
-          formatSelector = 'bestvideo[height<=240]+bestaudio/best[height<=240]';
-          break;
-        case '360p':
-          formatSelector = 'bestvideo[height<=360]+bestaudio/best[height<=360]';
-          break;
-        case '480p':
-          formatSelector = 'bestvideo[height<=480]+bestaudio/best[height<=480]';
-          break;
-        case '720p':
-          formatSelector = 'bestvideo[height<=720]+bestaudio/best[height<=720]';
-          break;
-        case '1080p':
-          formatSelector = 'bestvideo[height<=1080]+bestaudio/best[height<=1080]';
-          break;
-        default:
-          formatSelector = 'bestvideo[height<=720]+bestaudio/best[height<=720]';
+        case '144p': formatSelector = 'bestvideo[height<=144]+bestaudio/best[height<=144]'; break;
+        case '240p': formatSelector = 'bestvideo[height<=240]+bestaudio/best[height<=240]'; break;
+        case '360p': formatSelector = 'bestvideo[height<=360]+bestaudio/best[height<=360]'; break;
+        case '480p': formatSelector = 'bestvideo[height<=480]+bestaudio/best[height<=480]'; break;
+        case '720p': formatSelector = 'bestvideo[height<=720]+bestaudio/best[height<=720]'; break;
+        case '1080p': formatSelector = 'bestvideo[height<=1080]+bestaudio/best[height<=1080]'; break;
+        default: formatSelector = 'bestvideo[height<=720]+bestaudio/best[height<=720]';
       }
-
-      // 🧩 Step 1: Download raw format
       const rawOutPath = join(tmpdir(), `${title}.%(ext)s`);
       const ytCmd = `yt-dlp -f "${formatSelector}" -o "${rawOutPath}" "${url}"`;
-      await execPromise(ytCmd);
+      const { stdout, stderr } = await execPromise(ytCmd);
+      console.log('yt-dlp video stdout:', stdout);
+      console.log('yt-dlp video stderr:', stderr);
 
-      // 🔍 Find downloaded file name
       const allFiles = fs.readdirSync(tmpdir());
-      const rawFileName = allFiles.find(name => name.startsWith(title) && !name.endsWith('.mp4'));
+      const possible = allFiles.filter(name => name.startsWith(title));
+      console.log('Possible files after yt-dlp:', possible);
+
+      // Prefer video file that's not .mp4 (for conversion)
+      let rawFileName = possible.find(name => !name.endsWith('.mp4'));
+      // If nothing found, maybe yt-dlp already gave mp4
+      if (!rawFileName && possible.includes(`${title}.mp4`)) {
+        rawFileName = `${title}.mp4`;
+      }
+
+      if (!rawFileName) {
+        throw new Error('Raw video file not found after download. yt-dlp may have failed.');
+      }
+
       const rawFilePath = join(tmpdir(), rawFileName);
 
-      // 🎞 Step 2: Convert using ffmpeg to proper MP4
-      const ffmpegCmd = `ffmpeg -i "${rawFilePath}" -c:v libx264 -c:a aac -strict experimental "${finalPath}" -y`;
-      await execPromise(ffmpegCmd);
-
-      // 🧹 Step 3: Delete raw file
-      if (fs.existsSync(rawFilePath)) {
-        fs.unlinkSync(rawFilePath);
+      // Only convert if not already mp4
+      if (!rawFileName.endsWith('.mp4')) {
+        const ffmpegCmd = `ffmpeg -i "${rawFilePath}" -c:v libx264 -c:a aac -strict experimental "${finalPath}" -y`;
+        const { stdout: ffstdout, stderr: ffstderr } = await execPromise(ffmpegCmd);
+        console.log('ffmpeg stdout:', ffstdout);
+        console.log('ffmpeg stderr:', ffstderr);
+        // Cleanup
+        if (fs.existsSync(rawFilePath)) fs.unlinkSync(rawFilePath);
+      } else if (!fs.existsSync(finalPath) && fs.existsSync(rawFilePath)) {
+        // If already mp4, move to finalPath
+        fs.renameSync(rawFilePath, finalPath);
       }
     }
 
-    // ✅ Send final file
     if (!fs.existsSync(finalPath)) {
-      return res.status(500).json({ error: 'File not created. Please try again.' });
+      throw new Error('File not created. Please try again.');
     }
 
     const stat = fs.statSync(finalPath);
@@ -89,7 +90,7 @@ const execPromise = promisify(exec);
 
     const stream = fs.createReadStream(finalPath);
     stream.pipe(res);
-    stream.on('close', () => fs.unlinkSync(finalPath)); // cleanup
+    stream.on('close', () => fs.unlinkSync(finalPath));
   } catch (error) {
     console.error('❌ Download error:', error);
     return res.status(500).json({
@@ -99,4 +100,4 @@ const execPromise = promisify(exec);
   }
 }
 
-export default handler
+export default handler;
