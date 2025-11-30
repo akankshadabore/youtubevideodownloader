@@ -1,14 +1,12 @@
-'use client';
 import { useState } from 'react';
-import { ToastContainer, toast } from 'react-toastify';
-import 'react-toastify/dist/ReactToastify.css';
 
-function Home() {
+export default function Home() {
   const [url, setUrl] = useState('');
   const [downloading, setDownloading] = useState(false);
   const [quality, setQuality] = useState('720p');
   const [audioOnly, setAudioOnly] = useState(false);
   const [downloadProgress, setDownloadProgress] = useState(0);
+  const [message, setMessage] = useState({ type: '', text: '' });
 
   const qualityOptions = [
     { value: '144p', label: '144p' },
@@ -19,43 +17,38 @@ function Home() {
     { value: '1080p', label: '1080p Full HD' },
   ];
 
+  const showMessage = (type, text) => {
+    setMessage({ type, text });
+    setTimeout(() => setMessage({ type: '', text: '' }), 5000);
+  };
+
   const handleDownload = async () => {
     if (!url || (!url.includes('youtube.com') && !url.includes('youtu.be'))) {
-      showToast({ type: 'error', message: 'Please enter a valid YouTube URL' });
+      showMessage('error', 'Please enter a valid YouTube URL');
       return;
     }
-
     setDownloading(true);
     setDownloadProgress(0);
     
     try {
-      const controller = new AbortController();
-      const timeoutId = setTimeout(() => controller.abort(), 300000); // 5 minute timeout
-      
       const res = await fetch('/api/download', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ url, quality, audioOnly }),
-        signal: controller.signal
+        body: JSON.stringify({ url, quality, audioOnly })
       });
-
-      clearTimeout(timeoutId);
 
       if (!res.ok) {
         const errorData = await res.json().catch(() => ({}));
         throw new Error(errorData.details || errorData.error || `Server error: ${res.status}`);
       }
 
-      // Get file info from headers
       const contentLength = res.headers.get('Content-Length');
       const disposition = res.headers.get('Content-Disposition');
       const contentType = res.headers.get('Content-Type');
-      
       if (!contentLength || contentLength === '0') {
         throw new Error('Downloaded file is empty. Please try again.');
       }
 
-      // Extract filename from Content-Disposition header
       let filename = 'download';
       if (disposition) {
         const filenameMatch = disposition.match(/filename="(.+?)"/);
@@ -63,19 +56,15 @@ function Home() {
           filename = filenameMatch[1];
         }
       }
-      
-      // Fallback filename based on content type
       if (filename === 'download') {
         filename = audioOnly ? 'audio.mp3' : 'video.mp4';
       }
 
-      // Read the response as a stream with progress tracking
       const reader = res.body.getReader();
       const chunks = [];
       let receivedLength = 0;
       const total = parseInt(contentLength);
 
-      // Progress tracking
       const progressInterval = setInterval(() => {
         if (total > 0) {
           const progress = Math.min(Math.round((receivedLength / total) * 100), 100);
@@ -87,7 +76,6 @@ function Home() {
         while (true) {
           const { done, value } = await reader.read();
           if (done) break;
-          
           chunks.push(value);
           receivedLength += value.length;
         }
@@ -95,32 +83,24 @@ function Home() {
         clearInterval(progressInterval);
       }
 
-      // Ensure we have the complete file
       if (receivedLength !== total) {
         console.warn(`Expected ${total} bytes but received ${receivedLength} bytes`);
       }
 
-      // Create blob with correct MIME type
       const mimeType = contentType || (audioOnly ? 'audio/mpeg' : 'video/mp4');
       const blob = new Blob(chunks, { type: mimeType });
 
-      // Verify blob size
       if (blob.size === 0) {
         throw new Error('Downloaded file is empty. Please try again.');
       }
 
-      // Create and trigger download
       const blobUrl = window.URL.createObjectURL(blob);
       const a = document.createElement('a');
       a.href = blobUrl;
       a.download = filename;
       a.style.display = 'none';
-      
-      // Add to DOM, click, and cleanup
       document.body.appendChild(a);
       a.click();
-      
-      // Cleanup with proper timing
       setTimeout(() => {
         try {
           document.body.removeChild(a);
@@ -132,18 +112,14 @@ function Home() {
 
       setDownloadProgress(100);
       
-      showToast({ 
-        type: 'success', 
-        message: audioOnly 
-          ? `Audio downloaded successfully! 🎵 (${(blob.size / 1024 / 1024).toFixed(1)}MB)` 
-          : `Video downloaded successfully! 🎬 (${(blob.size / 1024 / 1024).toFixed(1)}MB)` 
-      });
+      showMessage('success', audioOnly 
+        ? `Audio downloaded successfully! 🎵 (${(blob.size / 1024 / 1024).toFixed(1)}MB)` 
+        : `Video downloaded successfully! 🎬 (${(blob.size / 1024 / 1024).toFixed(1)}MB)`
+      );
 
     } catch (err) {
       console.error('Download error:', err);
-      
       let errorMessage = 'Download failed. Please try again.';
-      
       if (err.name === 'AbortError') {
         errorMessage = 'Download timeout. Please try with lower quality.';
       } else if (err.message.includes('network') || err.message.includes('NetworkError')) {
@@ -157,8 +133,7 @@ function Home() {
       } else if (err.message) {
         errorMessage = err.message;
       }
-      
-      showToast({ type: 'error', message: errorMessage });
+      showMessage('error', errorMessage);
     } finally {
       setDownloading(false);
       setTimeout(() => {
@@ -167,46 +142,20 @@ function Home() {
     }
   };
 
-  // Enhanced toast styling
-  const showToast = ({ type = 'success', message }) => {
-    toast(message, {
-      type,
-      position: 'top-right',
-      autoClose: type === 'error' ? 6000 : 4000,
-      closeOnClick: true,
-      hideProgressBar: false,
-      pauseOnHover: true,
-      draggable: true,
-      icon: type === 'success' ? '✅' : '❌',
-      style: {
-        fontSize: '14px',
-        borderRadius: '8px',
-      },
-      progressStyle: {
-        background: type === 'success' ? '#10b981' : '#ef4444',
-      },
-    });
-  };
-
   return (
     <main className="min-h-screen bg-black text-white flex items-center justify-center px-4">
-      <ToastContainer 
-        position="top-right"
-        autoClose={4000}
-        hideProgressBar={false}
-        newestOnTop={false}
-        closeOnClick
-        rtl={false}
-        pauseOnFocusLoss
-        draggable
-        pauseOnHover
-        theme="dark"
-      />
-      
+      {message.text && (
+        <div className={`fixed top-4 right-4 p-4 rounded-lg shadow-lg z-50 ${
+          message.type === 'success' ? 'bg-green-600' : 'bg-red-600'
+        }`}>
+          <div className="flex items-center gap-2">
+            <span>{message.type === 'success' ? '✅' : '❌'}</span>
+            <span>{message.text}</span>
+          </div>
+        </div>
+      )}
       <div className="w-full max-w-md bg-gray-800 p-6 rounded-2xl shadow-lg">
         <h1 className="text-2xl font-bold mb-6 text-center">YouTube Video Downloader</h1>
-        
-        {/* URL Input */}
         <input
           type="text"
           placeholder="Paste YouTube video URL here..."
@@ -215,8 +164,6 @@ function Home() {
           onChange={(e) => setUrl(e.target.value)}
           disabled={downloading}
         />
-
-        {/* Audio Only Toggle */}
         <div className="mb-4">
           <label className="flex items-center cursor-pointer">
             <input
@@ -238,8 +185,6 @@ function Home() {
             </span>
           </label>
         </div>
-
-        {/* Quality Selector - Only show if not audio only */}
         {!audioOnly && (
           <div className="mb-4">
             <label className="block text-sm font-medium mb-2">📽️ Video Quality</label>
@@ -257,8 +202,6 @@ function Home() {
             </select>
           </div>
         )}
-
-        {/* Download Progress */}
         {downloading && (
           <div className="mb-4">
             <div className="flex justify-between text-sm text-gray-400 mb-1">
@@ -277,8 +220,6 @@ function Home() {
             </div>
           </div>
         )}
-
-        {/* Download Button */}
         <button
           onClick={handleDownload}
           disabled={downloading || !url}
@@ -301,7 +242,6 @@ function Home() {
             </>
           )}
         </button>
-
         <p className="text-sm text-gray-400 mt-4 text-center">
           Enter a valid YouTube URL. {audioOnly ? 'Audio will be downloaded as MP3.' : `Video will be downloaded as MP4 in ${quality} quality.`}
         </p>
@@ -309,6 +249,4 @@ function Home() {
     </main>
   );
 }
-
-export default Home;
 
