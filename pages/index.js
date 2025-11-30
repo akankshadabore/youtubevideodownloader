@@ -143,7 +143,7 @@ export default function Home() {
   };
 
   return (
-    <main className="min-h-screen bg-black text-white flex items-center justify-center px-4">
+    <main className="min-h-screen bg-gray-950 text-white flex items-center justify-center px-4">
       {message.text && (
         <div className={`fixed top-4 right-4 p-4 rounded-lg shadow-lg z-50 ${
           message.type === 'success' ? 'bg-green-600' : 'bg-red-600'

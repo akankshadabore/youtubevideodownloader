@@ -50,9 +50,7 @@ async function handler(req, res) {
       const possible = allFiles.filter(name => name.startsWith(title));
       console.log('Possible files after yt-dlp:', possible);
 
-      // Prefer video file that's not .mp4 (for conversion)
       let rawFileName = possible.find(name => !name.endsWith('.mp4'));
-      // If nothing found, maybe yt-dlp already gave mp4
       if (!rawFileName && possible.includes(`${title}.mp4`)) {
         rawFileName = `${title}.mp4`;
       }
